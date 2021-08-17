@@ -1,4 +1,8 @@
+This is an attempt at adding iCal funtionality to Gpredict.
+Having overflights in iCal format makes it easy to add them to various calendar and project managment software.
 
+Original Readme below:
+--------------------------------------------------------------------------
 Gpredict is a real time satellite tracking and orbit prediction program
 for the Linux desktop. It uses the SGP4/SDP4 propagation algorithms together
 with NORAD two-line element sets (TLE).
