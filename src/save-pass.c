@@ -506,14 +506,12 @@ static void save_passes_ical_exec(GtkWidget * parent,
                              gint format, gint contents)
 {
     gchar          *fname;
-    gchar          *pgheader;
-    gchar          *tblheader;
-    gchar          *tblcontents;
     gchar          *buff = NULL;
     gchar          *data = NULL;
     pass_t         *pass;
     gint            fields;
-    guint           i, n;
+    gboolean 	    loc;
+    gchar          *timezone;
 
     switch (format)
     {
@@ -526,15 +524,22 @@ static void save_passes_ical_exec(GtkWidget * parent,
         /* get visible columns for summary */
         fields = sat_cfg_get_int(SAT_CFG_INT_PRED_MULTI_COL);
 
+	/* determine time zone */
+	loc = sat_cfg_get_bool(SAT_CFG_BOOL_USE_LOCAL_TIME);
+	if(loc){
+		timezone = g_strdup("LMT");
+	} else {
+		timezone = g_strdup("UTC");
+	}
+
+
         /* create file contents */
         
 	/* header */
 	data = g_strdup_printf("BEGIN:VCALENDAR\nVERSION:2.0\nCALSCALE:GREGORIAN\n");
 	
 	/* events */
-	gchar *buff;
 	gchar *fmtstr;
-	pass_t *pass;
 	gchar tbuff[TIME_FORMAT_MAX_LENGTH];	
 	fmtstr = "%Y%m%dT%H%M%S";
 
@@ -551,14 +556,14 @@ static void save_passes_ical_exec(GtkWidget * parent,
 		daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, fmtstr, pass->aos);
 		buff = g_strdup(data);
 		g_free(data);
-		data = g_strdup_printf("%sDTSTART:%s\n", buff, tbuff);
+		data = g_strdup_printf("%sDTSTART;TZID=%s:%s\n", buff, timezone, tbuff);
 		g_free(buff);
 
 		/* LOS */
 		daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, fmtstr, pass->los);
 		buff = g_strdup(data);
 		g_free(data);
-		data = g_strdup_printf("%sDTEND:%s\n", buff, tbuff);
+		data = g_strdup_printf("%sDTEND;TZID=%s:%s\n", buff, timezone, tbuff);
 		g_free(buff);
 
 		/* Summary with Max Elevation and Sat name */
