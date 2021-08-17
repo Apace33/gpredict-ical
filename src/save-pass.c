@@ -38,6 +38,7 @@
 #include "gpredict-utils.h"
 #include "save-pass.h"
 #include "sgpsdp/sgp4sdp4.h"
+#include "time-tools.h"
 
 static void     file_changed(GtkWidget * widget, gpointer data);
 static void     save_pass_exec(GtkWidget * parent,
@@ -45,6 +46,10 @@ static void     save_pass_exec(GtkWidget * parent,
                                const gchar * savedir, const gchar * savefile,
                                gint format, gint contents);
 static void     save_passes_exec(GtkWidget * parent,
+                                 GSList * passes, qth_t * qth,
+                                 const gchar * savedir, const gchar * savefile,
+                                 gint format, gint contents);
+static void     save_passes_ical_exec(GtkWidget * parent,
                                  GSList * passes, qth_t * qth,
                                  const gchar * savedir, const gchar * savefile,
                                  gint format, gint contents);
@@ -333,7 +338,7 @@ void save_passes(GtkWidget * parent)
         cont = gtk_combo_box_get_active(GTK_COMBO_BOX(contents));
 
         /* call saver */
-        save_passes_exec(dialog, passes, qth, savedir, savefile,
+        save_passes_ical_exec(dialog, passes, qth, savedir, savefile,
                          SAVE_FORMAT_TXT, cont);
 
         /* store new settings */
@@ -479,6 +484,135 @@ static void save_passes_exec(GtkWidget * parent,
 
             }
         }
+
+        /* save data */
+        save_to_file(parent, fname, data);
+        g_free(data);
+        g_free(fname);
+        break;
+
+    default:
+        sat_log_log(SAT_LOG_LEVEL_ERROR,
+                    _("%s: Invalid file format: %d"), __func__, format);
+        break;
+    }
+}
+
+
+/** Experimental function to save data in iCalendar format **/
+static void save_passes_ical_exec(GtkWidget * parent,
+                             GSList * passes, qth_t * qth,
+                             const gchar * savedir, const gchar * savefile,
+                             gint format, gint contents)
+{
+    gchar          *fname;
+    gchar          *pgheader;
+    gchar          *tblheader;
+    gchar          *tblcontents;
+    gchar          *buff = NULL;
+    gchar          *data = NULL;
+    pass_t         *pass;
+    gint            fields;
+    guint           i, n;
+
+    switch (format)
+    {
+    case SAVE_FORMAT_TXT:
+
+        /* prepare full file name */
+        fname =
+            g_strconcat(savedir, G_DIR_SEPARATOR_S, savefile, ".txt", NULL);
+
+        /* get visible columns for summary */
+        fields = sat_cfg_get_int(SAT_CFG_INT_PRED_MULTI_COL);
+
+        /* create file contents */
+        
+	/* header */
+	data = g_strdup_printf("BEGIN:VCALENDAR\nVERSION:2.0\nCALSCALE:GREGORIAN\n");
+	
+	/* events */
+	gchar *buff;
+	gchar *fmtstr;
+	pass_t *pass;
+	gchar tbuff[TIME_FORMAT_MAX_LENGTH];	
+	fmtstr = "%Y%m%dT%H%M%S";
+
+	guint n = g_slist_length(passes);
+	for(guint i = 0; i < n; i++)
+	{
+		buff = g_strdup(data);
+		g_free(data);
+		data = g_strdup_printf("%sBEGIN:VEVENT\n", buff);
+		g_free(buff);
+		pass = PASS(g_slist_nth_data(passes, i));
+
+		/* AOS */
+		daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, fmtstr, pass->aos);
+		buff = g_strdup(data);
+		g_free(data);
+		data = g_strdup_printf("%sDTSTART:%s\n", buff, tbuff);
+		g_free(buff);
+
+		/* LOS */
+		daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, fmtstr, pass->los);
+		buff = g_strdup(data);
+		g_free(data);
+		data = g_strdup_printf("%sDTEND:%s\n", buff, tbuff);
+		g_free(buff);
+
+		/* Summary with Max Elevation and Sat name */
+		/* CHANGE TO SAT NAME FOR FINAL VERSION */
+		buff = g_strdup_printf("%sSUMMARY:%s [%.0f°]\n", data, savefile, pass->max_el);
+		g_free(data);
+		data = g_strdup(buff);
+		g_free(buff);
+
+
+		/* Description */
+		gchar *line;
+		
+		/* Duration */
+		guint h, m, s;
+		/* convert julian date to seconds */
+		s = (guint) ((pass->los - pass->aos)*86400);
+		/* extract hours */
+		h = (guint) floor(s / 3600);
+		s = s - 3600*h;
+		/*extract minutes */
+		m = (guint) floor(s/60);
+		s = s - 60*m;
+		
+		line = g_strdup_printf("Duration: %02d:%02d\\n", m, s);
+		
+		/* AOS Az */
+	        buff = g_strdup_printf("%sAOS Azimuth:  %6.2f\\n", line, pass->aos_az);
+           	g_free(line);
+            	line = g_strdup(buff);
+            	g_free(buff);	
+		
+		/* LOS Az */
+	        buff = g_strdup_printf("%sLOS Azimuth:  %6.2f\\n", line, pass->los_az);
+           	g_free(line);
+            	line = g_strdup(buff);
+            	g_free(buff);
+		
+		buff = g_strdup_printf("%sDESCRIPTION:%s\n", data, line);
+		g_free(data);
+		data = g_strdup(buff);
+		g_free(buff);
+
+		buff = g_strdup_printf("%sEND:VEVENT\n", data);
+		g_free(data);
+		data = g_strdup(buff);
+		g_free(buff);
+	}
+
+	buff = g_strdup_printf("%sEND:VCALENDAR\n", data);
+	g_free(data);
+	data = g_strdup(buff);
+	g_free(buff);
+
 
         /* save data */
         save_to_file(parent, fname, data);
