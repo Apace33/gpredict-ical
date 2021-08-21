@@ -112,6 +112,7 @@ gpredict_SOURCES = \
     sat-pref-single-pass.c sat-pref-single-pass.h \
     sat-pref-sky-at-glance.c sat-pref-sky-at-glance.h \
     sat-vis.c sat-vis.h \
+    save-ical.c save-ical.h \
     save-pass.c save-pass.h \
     time-tools.c time-tools.h \
     tle-tools.c tle-tools.h \

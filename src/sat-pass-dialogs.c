@@ -46,11 +46,13 @@
 #include "sat-vis.h"
 #include "sat-pass-dialogs.h"
 #include "save-pass.h"
+#include "save-ical.h"
 #include "sgpsdp/sgp4sdp4.h"
 #include "time-tools.h"
 
 #define RESPONSE_PRINT 10
 #define RESPONSE_SAVE  11
+#define RESPONSE_ICAL  12
 
 /** Column titles for multi-pass lists */
 const gchar    *MULTI_PASS_COL_TITLE[MULTI_PASS_COL_NUMBER] = {
@@ -1039,6 +1041,7 @@ void show_passes(const gchar * satname, qth_t * qth, GSList * passes,
     dialog = gtk_dialog_new_with_buttons(title,
                                          GTK_WINDOW(toplevel),
                                          GTK_DIALOG_DESTROY_WITH_PARENT,
+					 "_Export iCal", RESPONSE_ICAL,
                                          "_Print", RESPONSE_PRINT,
                                          "_Save", RESPONSE_SAVE,
                                          "_Close", GTK_RESPONSE_CLOSE,
@@ -1098,6 +1101,9 @@ static void multi_pass_response(GtkWidget * dialog, gint response,
     case RESPONSE_SAVE:
         save_passes(dialog);
         break;
+    case RESPONSE_ICAL:
+	save_passes_ical(dialog);
+	break;
         /* Close button or delete events */
     default:
         gtk_widget_destroy(dialog);
