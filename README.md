@@ -1,7 +1,7 @@
 ## About
 This is a fork of the satellite tracking application [gpredict](https://github.com/csete/gpredict), adding iCalendar functionality. 
 
-When viewing a pass or a set of passes you will see an extra button, which easily allows you to export said pass of set or passes as an .ics-File.
+When viewing a pass or a set of passes you will see an extra button, which easily allows you to export said pass or set of passes as an .ics-File.
 
 That way you can easily add a satellite pass to your calendar software 
 of choice, which can be very useful for satellite operations planning.
