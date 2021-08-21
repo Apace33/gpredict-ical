@@ -41,10 +41,10 @@
 #include "time-tools.h"
 
 static void     file_changed(GtkWidget * widget, gpointer data);
-static void     save_pass_exec(GtkWidget * parent,
+static void     save_pass_ical_exec(GtkWidget * parent,
                                pass_t * pass, qth_t * qth,
                                const gchar * savedir, const gchar * savefile,
-                               gint format, gint contents);
+                               gint format, gchar* sat);
 static void     save_passes_ical_exec(GtkWidget * parent,
                                  GSList * passes, qth_t * qth,
                                  const gchar * savedir, const gchar * savefile,
@@ -86,17 +86,17 @@ void save_pass_ical(GtkWidget * parent)
     GtkWidget      *grid;
     GtkWidget      *dirchooser;
     GtkWidget      *filchooser;
-    GtkWidget      *contents;
     GtkWidget      *label;
     gint            response;
     pass_t         *pass;
     qth_t          *qth;
+    gchar          *sat;
     gchar          *savedir = NULL;
     gchar          *savefile;
-    gint            cont;
 
 
     /* get data attached to parent */
+    sat = (gchar *) g_object_get_data(G_OBJECT(parent), "sat");
     qth = (qth_t *) g_object_get_data(G_OBJECT(parent), "qth");
     pass = (pass_t *) g_object_get_data(G_OBJECT(parent), "pass");
 
@@ -156,23 +156,6 @@ void save_pass_ical(GtkWidget * parent)
     gtk_entry_set_text(GTK_ENTRY(filchooser), savefile);
     g_free(savefile);
 
-    /* file contents */
-    label = gtk_label_new(_("File contents:"));
-    g_object_set(G_OBJECT(label), "halign", GTK_ALIGN_START,
-                 "valign", GTK_ALIGN_CENTER, NULL);
-    gtk_grid_attach(GTK_GRID(grid), label, 0, 2, 1, 1);
-
-    contents = gtk_combo_box_text_new();
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(contents),
-                                   _("Info+header+data"));
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(contents),
-                                   _("Header + data"));
-    gtk_combo_box_text_append_text(GTK_COMBO_BOX_TEXT(contents),
-                                   _("Data only"));
-    gtk_combo_box_set_active(GTK_COMBO_BOX(contents),
-                             sat_cfg_get_int(SAT_CFG_INT_PRED_SAVE_CONTENTS));
-    gtk_grid_attach(GTK_GRID(grid), contents, 1, 2, 1, 1);
-
     gtk_widget_show_all(grid);
     gtk_container_add(GTK_CONTAINER
                       (gtk_dialog_get_content_area(GTK_DIALOG(dialog))), grid);
@@ -188,15 +171,13 @@ void save_pass_ical(GtkWidget * parent)
         /* get file and directory */
         savedir = gtk_file_chooser_get_filename(GTK_FILE_CHOOSER(dirchooser));
         savefile = g_strdup(gtk_entry_get_text(GTK_ENTRY(filchooser)));
-        cont = gtk_combo_box_get_active(GTK_COMBO_BOX(contents));
 
         /* call saver */
-        save_pass_exec(dialog, pass, qth, savedir, savefile, SAVE_FORMAT_ICS,
-                       cont);
+        save_pass_ical_exec(dialog, pass, qth, savedir, savefile, SAVE_FORMAT_ICS,
+                       sat);
 
         /* store new settings */
         sat_cfg_set_str(SAT_CFG_STR_PRED_SAVE_DIR, savedir);
-        sat_cfg_set_int(SAT_CFG_INT_PRED_SAVE_CONTENTS, cont);
 
         /* clean up */
         g_free(savedir);
@@ -472,12 +453,19 @@ static void save_passes_ical_exec(GtkWidget * parent,
 		g_free(buff);
 
 		/* Summary with Max Elevation and Sat name */
-		/* CHANGE TO SAT NAME FOR FINAL VERSION */
 		buff = g_strdup_printf("%sSUMMARY:%s [%.0f°]\n", data, sat, pass->max_el);
 		g_free(data);
 		data = g_strdup(buff);
 		g_free(buff);
 
+		/* UID */
+		/* UID is formatted as:
+		 * <Satname><Orbit number><Date and hour of pass>@<Latitude><Longitude> */
+		daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, "%Y%m%d%H", pass->aos);
+		buff = g_strdup(data);
+		g_free(data);
+		data = g_strdup_printf("%sUID:%s%d%s@%f%f\n", buff, sat, pass->orbit, tbuff, qth->lat, qth->lon);
+		g_free(buff);
 
 		/* Description */
 		gchar *line;
@@ -556,70 +544,123 @@ static void save_passes_ical_exec(GtkWidget * parent,
  * @note The formatting is done by external functions according to the selected
  *       file format.
  */
-static void save_pass_exec(GtkWidget * parent,
+static void save_pass_ical_exec(GtkWidget * parent,
                            pass_t * pass, qth_t * qth,
                            const gchar * savedir, const gchar * savefile,
-                           gint format, gint contents)
+                           gint format, gchar* sat)
 {
     gchar          *fname;
-    gchar          *pgheader;
-    gchar          *tblheader;
-    gchar          *tblcontents;
     gchar          *buff = NULL;
     gchar          *data = NULL;
-    gint            fields;
+    gchar          *timezone;
+    gboolean 	    loc;
+
 
     switch (format)
     {
     case SAVE_FORMAT_ICS:
 
         /* prepare full file name */
-        fname =
-            g_strconcat(savedir, G_DIR_SEPARATOR_S, savefile, ".txt", NULL);
+        fname = g_strconcat(savedir, G_DIR_SEPARATOR_S, savefile, ".ics", NULL);
 
-        /* get visible columns */
-        fields = sat_cfg_get_int(SAT_CFG_INT_PRED_SINGLE_COL);
+	/* determine time zone */
+	loc = sat_cfg_get_bool(SAT_CFG_BOOL_USE_LOCAL_TIME);
+	if(loc){
+		timezone = g_strdup_printf(":");
+	} else {
+		timezone = g_strdup(";TZID=UTC:");
+	}
 
-        /* create file contents */
-        pgheader = pass_to_txt_pgheader(pass, qth, fields);
-        tblheader = pass_to_txt_tblheader(pass, qth, fields);
-        tblcontents = pass_to_txt_tblcontents(pass, qth, fields);
 
-        /* Add page header if selected */
-        if (contents == PASS_CONTENT_ALL)
-        {
-            data = g_strdup(pgheader);
-        }
+	/* create file contents */
+        
+	/* header */
+	data = g_strdup_printf("BEGIN:VCALENDAR\nVERSION:2.0\nCALSCALE:GREGORIAN\n");
+	
+	/* events */
+	gchar *fmtstr;
+	gchar tbuff[TIME_FORMAT_MAX_LENGTH];	
+	fmtstr = "%Y%m%dT%H%M%S";
 
-        /* Add table header if selected */
-        if ((contents == PASS_CONTENT_ALL) || (contents == PASS_CONTENT_TABLE))
-        {
-            if (data != NULL)
-            {
-                buff = g_strdup(data);
-                g_free(data);
-                data = g_strconcat(buff, tblheader, NULL);
-                g_free(buff);
-            }
-            else
-            {
-                data = g_strdup(tblheader);
-            }
+	buff = g_strdup(data);
+	g_free(data);
+	data = g_strdup_printf("%sBEGIN:VEVENT\n", buff);
+	g_free(buff);
 
-        }
+	/* AOS */
+	daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, fmtstr, pass->aos);
+	buff = g_strdup(data);
+	g_free(data);
+	data = g_strdup_printf("%sDTSTART%s%s\n", buff, timezone, tbuff);
+	g_free(buff);
 
-        /* Add data */
-        if (data != NULL)
-        {
-            buff = g_strdup(data);
-            g_free(data);
-            data = g_strconcat(buff, tblcontents, NULL);
-            g_free(buff);
-        }
-        else
-        {
-            data = g_strdup(tblcontents);
-        }
+	/* LOS */
+	daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, fmtstr, pass->los);
+	buff = g_strdup(data);
+	g_free(data);
+	data = g_strdup_printf("%sDTEND%s%s\n", buff, timezone, tbuff);
+	g_free(buff);
+
+	/* Summary with Max Elevation and Sat name */
+	buff = g_strdup_printf("%sSUMMARY:%s [%.0f°]\n", data, sat, pass->max_el);
+	g_free(data);
+	data = g_strdup(buff);
+	g_free(buff);
+
+	/* UID */
+	/* UID is formatted as:
+	 * <Satname><Orbit number><Date and hour of pass>@<Latitude><Longitude> */
+	daynum_to_str(tbuff, TIME_FORMAT_MAX_LENGTH, "%Y%m%d%H", pass->aos);
+	buff = g_strdup(data);
+	g_free(data);
+	data = g_strdup_printf("%sUID:%s%d%s@%f%f\n", buff, sat, pass->orbit, tbuff, qth->lat, qth->lon);
+	g_free(buff);
+
+	/* Description */
+	gchar *line;
+	
+	/* Duration */
+	guint h, m, s;
+	/* convert julian date to seconds */
+	s = (guint) ((pass->los - pass->aos)*86400);
+	/* extract hours */
+	h = (guint) floor(s / 3600);
+	s = s - 3600*h;
+	/*extract minutes */
+	m = (guint) floor(s/60);
+	s = s - 60*m;
+	
+	line = g_strdup_printf("Duration: %02d:%02d\\n", m, s);
+	
+	/* AOS Az */
+	buff = g_strdup_printf("%sAOS Azimuth:  %6.2f\\n", line, pass->aos_az);
+	g_free(line);
+	line = g_strdup(buff);
+	g_free(buff);	
+	
+	/* LOS Az */
+	buff = g_strdup_printf("%sLOS Azimuth:  %6.2f\\n", line, pass->los_az);
+	g_free(line);
+	line = g_strdup(buff);
+	g_free(buff);
+	
+	buff = g_strdup_printf("%sDESCRIPTION:%s\n", data, line);
+	g_free(data);
+	data = g_strdup(buff);
+	g_free(buff);
+
+	buff = g_strdup_printf("%sEND:VEVENT\n", data);
+	g_free(data);
+	data = g_strdup(buff);
+	g_free(buff);
+	
+
+	buff = g_strdup_printf("%sEND:VCALENDAR\n", data);
+	g_free(data);
+	data = g_strdup(buff);
+	g_free(buff);
+
+        
 
         /* save data */
         save_to_file(parent, fname, data);
@@ -627,9 +668,6 @@ static void save_pass_exec(GtkWidget * parent,
         /* clean up memory */
         g_free(fname);
         g_free(data);
-        g_free(pgheader);
-        g_free(tblheader);
-        g_free(tblcontents);
 
         break;
 
